@@ -21,8 +21,8 @@ import tensorflow as tf
 from batch_generator import batch_generator
 from log_prob import log_prob
 
-# Tensorflow graph
-class scrn_graph(object):
+# Define base RNN TensorFlow graph class
+class base_rnn_graph(object):
     
     # Graph constructor
     def __init__(self, num_gpus, alpha, hidden_size, state_size, vocabulary_size, num_training_unfoldings,
@@ -48,8 +48,8 @@ class scrn_graph(object):
         self._graph = tf.Graph()
         with self._graph.as_default():
            
-            # SCRN parameter definitions
-            self._setup_scrn_cell_parameters()
+            # Cell parameter definitions
+            self._setup_cell_parameters()
             
             # Training data
             self._training_data = []
@@ -91,7 +91,7 @@ class scrn_graph(object):
                            self._training_state_saved[tower].assign(tf.zeros([self._batch_size, self._state_size]))) \
                   for tower in range(self._num_towers) ]
 
-            # Train SCRN on training data
+            # Train RNN on training data
             for i in range(self._num_training_unfoldings // self._optimization_frequency):
                 training_labels = []
                 training_outputs = []
@@ -129,7 +129,7 @@ class scrn_graph(object):
                   for tower in range(self._num_towers) ] 
  
 
-            # Run SCRN on validation data
+            # Run RNN on validation data
             validation_outputs = []
             for tower in range(self._num_towers):
                 validation_outputs.append([])
@@ -139,35 +139,14 @@ class scrn_graph(object):
 
             # Validation prediction, replace with hierarchical softmax in the future
             self._validation_prediction = tf.nn.softmax(logits)
-                
-    # SCRN cell definition   .
-    def _scrn_cell(self, x, h, s):
-        state_arg = (1 - self._alpha) * tf.matmul(x, self._B) + self._alpha * s
-        state = state_arg
-        hidden_arg = tf.matmul(s, self._P) + tf.matmul(x, self._A) + tf.matmul(h, self._R)
-        hidden = tf.sigmoid(hidden_arg)
-        output_arg = tf.matmul(hidden, self._U) + tf.matmul(state, self._V) 
-        output = output_arg
-        return output, hidden, state
-    
-    # Setup SCRN cell parameters
-    def _setup_scrn_cell_parameters(self):
-        
-        # Context embedding tensor.
-        self._B = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._state_size], -0.1, 0.1))
-
-        # Token embedding tensor.
-        self._A = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
             
-        #
-        self._P = tf.Variable(tf.truncated_normal([self._state_size, self._hidden_size], -0.1, 0.1))
-
-        # Recurrent weights tensor and bias.
-        self._R = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
-
-        # Output update tensor and bias.
-        self._U = tf.Variable(tf.truncated_normal([self._hidden_size, self._vocabulary_size], -0.1, 0.1))
-        self._V = tf.Variable(tf.truncated_normal([self._state_size, self._vocabulary_size], -0.1, 0.1))
+    # Placeholder function for cell definition
+    def _cell(self):
+        print('Cell not defined')
+    
+    # Placeholder function to set up cell parameters
+    def _setup_cell_parameters(self):
+        print('Cell parameters not defined')
     
     # Implements a tower to run part of a batch of training data on a GPU
     def _training_tower(self, i, tower, gpu):
@@ -178,13 +157,13 @@ class scrn_graph(object):
             hidden = self._training_hidden_saved[tower]
             state = self._training_state_saved[tower]
 
-            # Run training data through SCRN cells
+            # Run training data through cell
             labels = []
             outputs = []
             for j in range(self._optimization_frequency):
                 x = self._training_data[tower][i*self._optimization_frequency + j]
                 label = self._training_data[tower][i*self._optimization_frequency + j + 1]
-                output, hidden, state = self._scrn_cell(x, hidden, state)
+                output, hidden, state = self._cell(x, hidden, state)
                 labels.append(label)
                 outputs.append(output)
 
@@ -202,11 +181,11 @@ class scrn_graph(object):
             hidden = self._validation_hidden_saved[tower]
             state = self._validation_state_saved[tower]
 
-            # Run validation data through SCRN cells
+            # Run validation data through cell
             outputs = []
             for i in range(self._num_validation_unfoldings):
                 x = self._validation_input[tower][i]
-                output, hidden, state = self._scrn_cell(x, hidden, state)
+                output, hidden, state = self._cell(x, hidden, state)
                 outputs.append(output)
 
             # Save validation state and return validation outputs
@@ -318,3 +297,35 @@ class scrn_graph(object):
                 if epoch > 0 and perplexity > perplexity_last_epoch:
                     learning_rate *= learning_decay
                 perplexity_last_epoch = perplexity
+                
+# Define derived SCRN TensorFlow graph class
+class scrn_graph(base_rnn_graph):
+    
+    # SCRN cell definition   .
+    def _cell(self, x, h, s):
+        state_arg = (1 - self._alpha) * tf.matmul(x, self._B) + self._alpha * s
+        state = state_arg
+        hidden_arg = tf.matmul(s, self._P) + tf.matmul(x, self._A) + tf.matmul(h, self._R)
+        hidden = tf.sigmoid(hidden_arg)
+        output_arg = tf.matmul(hidden, self._U) + tf.matmul(state, self._V) 
+        output = output_arg
+        return output, hidden, state
+    
+    # Setup SCRN cell parameters
+    def _setup_cell_parameters(self):
+        
+        # Context embedding tensor.
+        self._B = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._state_size], -0.1, 0.1))
+
+        # Token embedding tensor.
+        self._A = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
+            
+        #
+        self._P = tf.Variable(tf.truncated_normal([self._state_size, self._hidden_size], -0.1, 0.1))
+
+        # Recurrent weights tensor and bias.
+        self._R = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
+
+        # Output update tensor and bias.
+        self._U = tf.Variable(tf.truncated_normal([self._hidden_size, self._vocabulary_size], -0.1, 0.1))
+        self._V = tf.Variable(tf.truncated_normal([self._state_size, self._vocabulary_size], -0.1, 0.1))

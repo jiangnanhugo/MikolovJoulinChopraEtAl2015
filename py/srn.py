@@ -20,9 +20,9 @@ import tensorflow as tf
 # Local imports
 from batch_generator import batch_generator
 from log_prob import log_prob
-
-# Tensorflow graph
-class srn_graph(object):
+    
+# Define base RNN TensorFlow graph class
+class base_rnn_graph(object):
     
     # Graph constructor
     def __init__(self, num_gpus, hidden_size, vocabulary_size, num_training_unfoldings,
@@ -46,8 +46,8 @@ class srn_graph(object):
         self._graph = tf.Graph()
         with self._graph.as_default():
 
-            # SRN parameter definitions
-            self._setup_srn_cell_parameters()
+            # Cell parameter definitions
+            self._setup_cell_parameters()
             
             # Training data
             self._training_data = []
@@ -83,7 +83,7 @@ class srn_graph(object):
                 [ tf.group(self._training_hidden_saved[tower].assign(tf.zeros([batch_size, hidden_size]))) \
                   for tower in range(self._num_towers) ]
             
-            # Train SRN on training data
+            # Train RNN on training data
             for i in range(self._num_training_unfoldings // self._optimization_frequency):
                 training_labels = []
                 training_outputs = []
@@ -118,7 +118,7 @@ class srn_graph(object):
                 [ tf.group(self._validation_hidden_saved[tower].assign(tf.zeros([1, hidden_size]))) \
                   for tower in range(self._num_towers) ]
 
-            # Run SRN on validation data
+            # Run RNN on validation data
             validation_outputs = []
             for tower in range(self._num_towers):
                 validation_outputs.append([])
@@ -129,25 +129,13 @@ class srn_graph(object):
             # Validation prediction, replace with hierarchical softmax in the future
             self._validation_prediction = tf.nn.softmax(logits)
             
-    # Setup SRN cell parameters
-    def _setup_srn_cell_parameters(self):
+    # Placeholder function for cell definition
+    def _cell(self):
+        print('Cell not defined')
     
-        # Token embedding tensor.
-        self._A = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
-
-        # Recurrent weights tensor and bias.
-        self._R = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
-
-        # Output update tensor and bias.
-        self._U = tf.Variable(tf.truncated_normal([self._hidden_size, self._vocabulary_size], -0.1, 0.1))
-                
-    # SRN cell definition
-    def _srn_cell(self, x, h):
-        hidden_arg = tf.matmul(x, self._A) + tf.matmul(h, self._R)
-        hidden = tf.sigmoid(hidden_arg)
-        output_arg = tf.matmul(hidden, self._U)
-        output = output_arg
-        return output, hidden
+    # Placeholder function to set up cell parameters
+    def _setup_cell_parameters(self):
+        print('Cell parameters not defined')
     
     # Implements a tower to run part of a batch of training data on a GPU
     def _training_tower(self, i, tower, gpu):
@@ -157,13 +145,13 @@ class srn_graph(object):
             # Get saved training state
             hidden = self._training_hidden_saved[tower]
 
-            # Run training data through SRN cells
+            # Run training data through cell
             labels = []
             outputs = []
             for j in range(self._optimization_frequency):
                 x = self._training_data[tower][i*self._optimization_frequency + j]
                 label = self._training_data[tower][i*self._optimization_frequency + j + 1]
-                output, hidden = self._srn_cell(x, hidden)
+                output, hidden = self._cell(x, hidden)
                 labels.append(label)
                 outputs.append(output)
 
@@ -179,11 +167,11 @@ class srn_graph(object):
             # Get saved validation state
             hidden = self._validation_hidden_saved[tower]
 
-            # Run validation data through SRN cells
+            # Run validation data through cell
             outputs = []
             for i in range(self._num_validation_unfoldings):
                 x = self._validation_input[tower][i]
-                output, hidden = self._srn_cell(x, hidden)
+                output, hidden = self._cell(x, hidden)
                 outputs.append(output)
 
             # Save validation state and return validation outputs
@@ -294,3 +282,26 @@ class srn_graph(object):
                 if epoch > 0 and perplexity > perplexity_last_epoch:
                     learning_rate *= learning_decay
                 perplexity_last_epoch = perplexity
+                
+# Define derived SRN TensorFlow graph class
+class srn_graph(base_rnn_graph):
+    
+    # SRN cell definition   .
+    def _cell(self, x, h):
+        hidden_arg = tf.matmul(x, self._A) + tf.matmul(h, self._R)
+        hidden = tf.sigmoid(hidden_arg)
+        output_arg = tf.matmul(hidden, self._U)
+        output = output_arg
+        return output, hidden
+    
+    # Setup SRN cell parameters
+    def _setup_cell_parameters(self):
+        
+        # Token embedding tensor.
+        self._A = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
+
+        # Recurrent weights tensor and bias.
+        self._R = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
+
+        # Output update tensor and bias.
+        self._U = tf.Variable(tf.truncated_normal([self._hidden_size, self._vocabulary_size], -0.1, 0.1))

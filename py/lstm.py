@@ -21,8 +21,8 @@ import tensorflow as tf
 from batch_generator import batch_generator
 from log_prob import log_prob
 
-# Tensorflow graph
-class lstm_graph(object):
+# Define base RNN TensorFlow graph class
+class base_rnn_graph(object):
     
     # Graph constructor
     def __init__(self, num_gpus, hidden_size, vocabulary_size, num_training_unfoldings,
@@ -46,8 +46,8 @@ class lstm_graph(object):
         self._graph = tf.Graph()
         with self._graph.as_default():
 
-            # LSTM parameter definitions
-            self._setup_lstm_cell_parameters()
+            # Cell parameter definitions
+            self._setup_cell_parameters()
             
             # Training data
             self._training_data = []
@@ -89,7 +89,7 @@ class lstm_graph(object):
                            self._training_state_saved[tower].assign(tf.zeros([self._batch_size, self._hidden_size]))) \
                   for tower in range(self._num_towers) ]
             
-            # Train LSTM on training data
+            # Train RNN on training data
             for i in range(self._num_training_unfoldings // self._optimization_frequency):
                 training_labels = []
                 training_outputs = []
@@ -126,7 +126,7 @@ class lstm_graph(object):
                            self._validation_state_saved[tower].assign(tf.zeros([1, self._hidden_size]))) \
                   for tower in range(self._num_towers) ]
 
-            # Run LSTM on validation data
+            # Run RNN on validation data
             validation_outputs = []
             for tower in range(self._num_towers):
                 validation_outputs.append([])
@@ -136,46 +136,14 @@ class lstm_graph(object):
 
             # Validation prediction, replace with hierarchical softmax in the future
             self._validation_prediction = tf.nn.softmax(logits)
-                
-    # LSTM cell definition
-    def _lstm_cell(self, x, h, c):
-        forget_arg = tf.matmul(x, self._Wf) + tf.matmul(h, self._Uf)
-        forget_gate = tf.sigmoid(forget_arg + self._forget_bias)
-        input_arg = tf.matmul(x, self._Wi) + tf.matmul(h, self._Ui)
-        input_gate = tf.sigmoid(input_arg + self._input_bias)
-        output_arg = tf.matmul(x, self._Wo) + tf.matmul(h, self._Uo)
-        output_gate = tf.sigmoid(output_arg + self._output_bias)
-        update_arg = tf.matmul(x, self._Wc) + tf.matmul(h, self._Uc)
-        state = forget_gate * c + input_gate * tf.tanh(update_arg + self._update_bias)
-        output = output_gate * tf.tanh(state)
-        return output, state
+            
+    # Placeholder function for cell definition
+    def _cell(self):
+        print('Cell not defined')
     
-    # Setup LSTM cell parameters
-    def _setup_lstm_cell_parameters(self):
-        
-        # Forget gate input and output tensor and bias.
-        self._Wf = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
-        self._Uf = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
-        self._forget_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
-
-        # Input gate input and output tensor and bias.
-        self._Wi = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
-        self._Ui = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
-        self._input_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
-
-        # Output gate input and output tensor and bias.
-        self._Wo = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
-        self._Uo = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
-        self._output_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
-
-        # Cell state update input and output tensor and bias.
-        self._Wc = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
-        self._Uc = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
-        self._update_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
-
-        # Softmax weight tensor and bias.
-        self._W = tf.Variable(tf.truncated_normal([self._hidden_size, self._vocabulary_size], -0.1, 0.1))
-        self._W_bias = tf.Variable(tf.zeros([self._vocabulary_size]))
+    # Placeholder function to set up cell parameters
+    def _setup_cell_parameters(self):
+        print('Cell parameters not defined')
     
     # Implements a tower to run part of a batch of training data on a GPU
     def _training_tower(self, i, tower, gpu):
@@ -186,13 +154,13 @@ class lstm_graph(object):
             output = self._training_output_saved[tower]
             state = self._training_state_saved[tower]
 
-            # Run training data through LSTM cells
+            # Run training data through cell
             labels = []
             outputs = []
             for j in range(self._optimization_frequency):
                 x = self._training_data[tower][i*self._optimization_frequency + j]
                 label = self._training_data[tower][i*self._optimization_frequency + j + 1]
-                output, state = self._lstm_cell(x, output, state)
+                output, state = self._cell(x, output, state)
                 labels.append(label)
                 outputs.append(tf.nn.xw_plus_b(output, self._W, self._W_bias))
 
@@ -210,11 +178,11 @@ class lstm_graph(object):
             output = self._validation_output_saved[tower]
             state = self._validation_state_saved[tower]
 
-            # Run validation data through LSTM cells
+            # Run validation data through cell
             outputs = []
             for i in range(self._num_validation_unfoldings):
                 x = self._validation_input[tower][i]
-                output, state = self._lstm_cell(x, output, state)
+                output, state = self._cell(x, output, state)
                 outputs.append(tf.nn.xw_plus_b(output, self._W, self._W_bias))
 
             # Save validation state and return validation outputs
@@ -326,3 +294,46 @@ class lstm_graph(object):
                 if epoch > 0 and perplexity > perplexity_last_epoch:
                     learning_rate *= learning_decay
                 perplexity_last_epoch = perplexity
+                
+# Define derived LSTM TensorFlow graph class
+class lstm_graph(base_rnn_graph):
+    
+    # LSTM cell definition   .
+    def _cell(self, x, h, c):
+        forget_arg = tf.matmul(x, self._Wf) + tf.matmul(h, self._Uf)
+        forget_gate = tf.sigmoid(forget_arg + self._forget_bias)
+        input_arg = tf.matmul(x, self._Wi) + tf.matmul(h, self._Ui)
+        input_gate = tf.sigmoid(input_arg + self._input_bias)
+        output_arg = tf.matmul(x, self._Wo) + tf.matmul(h, self._Uo)
+        output_gate = tf.sigmoid(output_arg + self._output_bias)
+        update_arg = tf.matmul(x, self._Wc) + tf.matmul(h, self._Uc)
+        state = forget_gate * c + input_gate * tf.tanh(update_arg + self._update_bias)
+        output = output_gate * tf.tanh(state)
+        return output, state
+    
+    # Setup LSTM cell parameters
+    def _setup_cell_parameters(self):
+        
+        # Forget gate input and output tensor and bias.
+        self._Wf = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
+        self._Uf = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
+        self._forget_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
+
+        # Input gate input and output tensor and bias.
+        self._Wi = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
+        self._Ui = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
+        self._input_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
+
+        # Output gate input and output tensor and bias.
+        self._Wo = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
+        self._Uo = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
+        self._output_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
+
+        # Cell state update input and output tensor and bias.
+        self._Wc = tf.Variable(tf.truncated_normal([self._vocabulary_size, self._hidden_size], -0.1, 0.1))
+        self._Uc = tf.Variable(tf.truncated_normal([self._hidden_size, self._hidden_size], -0.1, 0.1))
+        self._update_bias = tf.Variable(tf.zeros([1, self._hidden_size]))
+
+        # Softmax weight tensor and bias.
+        self._W = tf.Variable(tf.truncated_normal([self._hidden_size, self._vocabulary_size], -0.1, 0.1))
+        self._W_bias = tf.Variable(tf.zeros([self._vocabulary_size]))
