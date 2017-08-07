@@ -45,13 +45,14 @@ class base_rnn_graph(object):
         print('Validation tower not defined')
             
     # Train model parameters
-    def train(self, learning_rate, learning_decay, num_epochs, summary_frequency, training_text, validation_text):
+    def train(self, learning_rate, learning_decay, momentum, clip_norm, num_epochs, summary_frequency, training_text,
+              validation_text):
 
         # Generate training batches
         print('Training Batch Generator:')
         training_batches = []
         for tower in range(self._num_towers):
-            training_batches.append(batch_generator(tower, training_text[tower], self._batch_size,
+            training_batches.append(batch_generator(tower, training_text[tower], self._training_batch_size,
                                                     self._num_training_unfoldings, self._vocabulary_size))
         
         # Generate validation batches
@@ -59,7 +60,7 @@ class base_rnn_graph(object):
         validation_batches = []
         tower = 0
         for tower in range(self._num_towers):
-            validation_batches.append(batch_generator(tower, validation_text[tower], 1,
+            validation_batches.append(batch_generator(tower, validation_text[tower], self._validation_batch_size,
                                                       self._num_validation_unfoldings, self._vocabulary_size))
         
         # Training loop
@@ -95,7 +96,9 @@ class base_rnn_graph(object):
                     batch_ctr += 1
 
                     # Optimization
+                    training_feed_dict[self._clip_norm] = clip_norm
                     training_feed_dict[self._learning_rate] = learning_rate
+                    training_feed_dict[self._momentum] = momentum
                     for tower in range(self._num_towers):
                         for i in range(self._num_training_unfoldings + 1):
                             training_feed_dict[self._training_data[tower][i]] = training_batches_next[tower][i]
@@ -136,11 +139,13 @@ class base_rnn_graph(object):
                     # Summarize current performance
                     for tower in range(self._num_towers):
                         for i in range(self._num_validation_unfoldings):
-                            validation_log_prob_sum = validation_log_prob_sum + \
-                                log_prob(validation_prediction[tower][i], validation_batches_next_label[tower][i])
+                            for j in range(self._validation_batch_size):
+                                validation_log_prob_sum = validation_log_prob_sum + \
+                                    log_prob(validation_prediction[tower][i][j], validation_batches_next_label[tower][i][j])
                     
                 # Calculation validation perplexity
-                N = self._num_towers*self._num_validation_unfoldings*validation_batches[0].num_batches()
+                N = self._num_towers * self._num_validation_unfoldings * \
+                    validation_batches[0].num_batches() * self._validation_batch_size
                 perplexity = float(2 ** (-validation_log_prob_sum / N))
                 print('Epoch: %d  Validation Set Perplexity: %.2f' % (epoch+1, perplexity))
 

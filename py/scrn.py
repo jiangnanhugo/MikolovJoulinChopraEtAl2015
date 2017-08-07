@@ -23,13 +23,13 @@ class scrn_graph(base_rnn_graph3):
     
     # Graph constructor
     def __init__(self, num_gpus, alpha, hidden_size, state_size, vocabulary_size, num_training_unfoldings,
-                 num_validation_unfoldings, batch_size, optimization_frequency, clip_norm, momentum):
+                 num_validation_unfoldings, training_batch_size, validation_batch_size, optimization_frequency):
         
         # Input hyperparameters
         self._alpha = alpha
         
         base_rnn_graph3.__init__(self, num_gpus, hidden_size, state_size, vocabulary_size, num_training_unfoldings,
-                                 num_validation_unfoldings, batch_size, optimization_frequency, clip_norm, momentum)
+                                 num_validation_unfoldings, training_batch_size, validation_batch_size, optimization_frequency)
     
     # SCRN cell definition   .
     def _cell(self, x, h, s):
