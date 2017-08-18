@@ -46,7 +46,7 @@ class base_rnn_graph(object):
             
     # Train model parameters
     def train(self, learning_rate, learning_decay, momentum, clip_norm, num_epochs, summary_frequency, training_text,
-              validation_text):
+              validation_text,logdir):
 
         # Generate training batches
         print('Training Batch Generator:')
@@ -69,7 +69,12 @@ class base_rnn_graph(object):
         training_feed_dict = dict()
         validation_feed_dict = dict()
         with tf.Session(graph=self._graph, config=tf.ConfigProto(log_device_placement=True)) as session:
+            
+            # Create summary writers
+            training_writer = tf.summary.FileWriter(logdir + 'training/', graph=tf.get_default_graph())
+            validation_writer = tf.summary.FileWriter(logdir + 'validation/', graph=tf.get_default_graph())
         
+            # Initialize
             session.run(self._initialization)
             print('Initialized')
 
@@ -102,9 +107,11 @@ class base_rnn_graph(object):
                     for tower in range(self._num_towers):
                         for i in range(self._num_training_unfoldings + 1):
                             training_feed_dict[self._training_data[tower][i]] = training_batches_next[tower][i]
-                    session.run(self._optimize, feed_dict=training_feed_dict)
+                    _, summary = session.run([self._optimize, self._training_summary], feed_dict=training_feed_dict)
 
                     # Summarize current performance
+                    training_writer.add_summary(summary, epoch * training_batches[0].num_batches() + batch)
+                    
                     if (batch+1) % summary_frequency == 0:
                         cst = session.run(self._cost, feed_dict=training_feed_dict)
                         print('     Total Batches: %d  Current Batch: %d  Cost: %.2f' % 

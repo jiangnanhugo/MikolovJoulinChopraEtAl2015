@@ -112,6 +112,10 @@ class base_rnn_graph1(base_rnn_graph):
                 gradients, variables = zip(*self._optimizer.compute_gradients(self._cost))
                 gradients, _ = tf.clip_by_global_norm(gradients, self._clip_norm)
                 self._optimize = self._optimizer.apply_gradients(zip(gradients, variables))
+
+            # Summarize training performance
+            tf.summary.scalar('cost', self._cost)
+            self._training_summary = tf.summary.merge_all()
                 
             # Initialization:
             
