@@ -68,7 +68,11 @@ class base_rnn_graph(object):
         epoch_ctr = 0
         training_feed_dict = dict()
         validation_feed_dict = dict()
-        with tf.Session(graph=self._graph, config=tf.ConfigProto(log_device_placement=True)) as session:
+        
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        config.log_device_placement = True
+        with tf.Session(graph=self._graph, config=config) as session:
             
             # Create summary writers
             training_writer = tf.summary.FileWriter(logdir + 'training/', graph=tf.get_default_graph())
