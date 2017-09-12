@@ -24,9 +24,98 @@ from log_prob import log_prob
 # Define base RNN TensorFlow graph class
 class base_rnn_graph(object):
     
-    # Place holder for graph constructor
-    def __init__(self):
-        print('TensorFlow graph not defined')
+    # Graph constructor
+    def __init__(self, num_gpus, vocabulary_size, num_training_unfoldings, num_validation_unfoldings, training_batch_size,
+                 validation_batch_size, optimization_frequency):
+        
+        # Input hyperparameters
+        self._num_gpus = num_gpus
+        self._num_training_unfoldings = num_training_unfoldings
+        self._num_validation_unfoldings = num_validation_unfoldings
+        self._optimization_frequency = optimization_frequency
+        self._training_batch_size = training_batch_size
+        self._validation_batch_size = validation_batch_size
+        self._vocabulary_size = vocabulary_size
+        
+        # Derived hyperparameters
+        self._num_towers = self._num_gpus
+        
+        # Graph definition
+        self._graph = tf.Graph()
+        with self._graph.as_default():
+
+            # Setup tensor structures
+            self._setup_cell_parameters()
+            self._setup_training_data()
+            self._setup_validation_data()
+   
+            # Optimizer hyperparameters
+            self._clip_norm = tf.placeholder(tf.float32)
+            self._learning_rate = tf.placeholder(tf.float32)
+            self._momentum = tf.placeholder(tf.float32)
+                
+            # Optimizer
+            self._optimizer = self._add_optimizer('momentum', self._learning_rate, self._momentum)
+                    
+            # Training:
+            
+            # Reset training state
+            self._reset_training_state = self._reset_training_state_fun()
+                
+            # Train RNN on training data
+            for i in range(self._num_training_unfoldings // self._optimization_frequency):
+                training_labels = []
+                training_outputs = []
+                for tower in range(self._num_towers):
+                    training_labels.append([])
+                    training_outputs.append([])
+                for tower in range(self._num_towers):
+                    training_outputs[tower], training_labels[tower] = self._training_tower(i, tower, tower)
+                all_training_outputs = []
+                all_training_labels = []
+                for tower in range(self._num_towers):
+                    all_training_outputs += training_outputs[tower]
+                    all_training_labels += training_labels[tower]
+                logits = tf.concat(all_training_outputs, 0)
+                labels = tf.concat(all_training_labels, 0)
+
+                # Replace with hierarchical softmax in the future
+                self._cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
+
+                gradients, variables = zip(*self._optimizer.compute_gradients(self._cost))
+                gradients, _ = tf.clip_by_global_norm(gradients, self._clip_norm)
+                self._optimize = self._optimizer.apply_gradients(zip(gradients, variables))
+
+            # Summarize training performance
+            tf.summary.scalar('cost', self._cost)
+            self._training_summary = tf.summary.merge_all()
+                
+            # Initialization:
+            
+            self._initialization = tf.global_variables_initializer()
+                    
+            # Validation:
+    
+            # Reset validation state
+            self._reset_validation_state = self._reset_validation_state_fun()
+
+            # Run RNN on validation data
+            validation_outputs = []
+            for tower in range(self._num_towers):
+                validation_outputs.append([])
+            for tower in range(self._num_towers):
+                validation_outputs[tower] = self._validation_tower(tower,tower)
+            logits = validation_outputs
+
+            # Validation prediction, replace with hierarchical softmax in the future
+            self._validation_prediction = tf.nn.softmax(logits)
+        
+    # Function to add choice of optimizer
+    def _add_optimizer(self, optimizer, learning_rate, momentum):
+        if optimizer == 'gradient_descent':
+            return tf.train.GradientDescentOptimizer(learning_rate)
+        elif optimizer == 'momentum':
+            return tf.train.MomentumOptimizer(learning_rate, momentum)
         
     # Placeholder function for cell definition
     def _cell(self):
