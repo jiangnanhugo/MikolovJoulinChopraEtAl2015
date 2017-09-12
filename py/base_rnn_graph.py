@@ -120,10 +120,26 @@ class base_rnn_graph(object):
     # Placeholder function for cell definition
     def _cell(self):
         print('Cell not defined')
+        
+    # Placeholder function to reset training state       
+    def _reset_training_state_fun(self):
+        print('Training state reset not defined')
+    
+    # Placeholder function to reset validation state
+    def _reset_validation_state_fun(self):
+        print('Validation state reset not defined')
     
     # Placeholder function to set up cell parameters
     def _setup_cell_parameters(self):
-        print('Cell parameters not defined')
+        print('Cell parameters not defined')  
+                
+    # Placeholder function to set up training parameters
+    def _setup_training_parameters(self):
+        print('Training parameters not defined')
+        
+    # Placeholder function to set up validation parameters
+    def _setup_validation_parameters(self):
+        print('Validation parameters not defined')
         
     # Placeholder function to implement a tower to run part of a batch of training data on a GPU
     def _training_tower(self, i, tower, gpu):
