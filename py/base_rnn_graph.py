@@ -64,20 +64,9 @@ class base_rnn_graph(object):
                 
             # Train RNN on training data
             for i in range(self._num_training_unfoldings // self._optimization_frequency):
-                training_labels = []
-                training_outputs = []
-                for tower in range(self._num_towers):
-                    training_labels.append([])
-                    training_outputs.append([])
-                for tower in range(self._num_towers):
-                    training_outputs[tower], training_labels[tower] = self._training_tower(i, tower, tower)
-                all_training_outputs = []
-                all_training_labels = []
-                for tower in range(self._num_towers):
-                    all_training_outputs += training_outputs[tower]
-                    all_training_labels += training_labels[tower]
-                logits = tf.concat(all_training_outputs, 0)
-                labels = tf.concat(all_training_labels, 0)
+                
+                #
+                logits, labels = self._run_training_rnn(i)
 
                 # Replace with hierarchical softmax in the future
                 self._cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
@@ -100,12 +89,7 @@ class base_rnn_graph(object):
             self._reset_validation_state = self._reset_validation_state_fun()
 
             # Run RNN on validation data
-            validation_outputs = []
-            for tower in range(self._num_towers):
-                validation_outputs.append([])
-            for tower in range(self._num_towers):
-                validation_outputs[tower] = self._validation_tower(tower,tower)
-            logits = validation_outputs
+            logits = self._run_validation_rnn()
 
             # Validation prediction, replace with hierarchical softmax in the future
             self._validation_prediction = tf.nn.softmax(logits)
@@ -128,6 +112,34 @@ class base_rnn_graph(object):
     # Placeholder function to reset validation state
     def _reset_validation_state_fun(self):
         print('Validation state reset not defined')
+        
+    #
+    def _run_training_rnn(self, i):
+        training_labels = []
+        training_outputs = []
+        for tower in range(self._num_towers):
+            training_labels.append([])
+            training_outputs.append([])
+        for tower in range(self._num_towers):
+            training_outputs[tower], training_labels[tower] = self._training_tower(i, tower, tower)
+        all_training_outputs = []
+        all_training_labels = []
+        for tower in range(self._num_towers):
+            all_training_outputs += training_outputs[tower]
+            all_training_labels += training_labels[tower]
+        logits = tf.concat(all_training_outputs, 0)
+        labels = tf.concat(all_training_labels, 0)
+        return logits, labels
+
+    #
+    def _run_validation_rnn(self):
+        validation_outputs = []
+        for tower in range(self._num_towers):
+            validation_outputs.append([])
+        for tower in range(self._num_towers):
+            validation_outputs[tower] = self._validation_tower(tower,tower)
+        logits = validation_outputs
+        return logits
     
     # Placeholder function to set up cell parameters
     def _setup_cell_parameters(self):
