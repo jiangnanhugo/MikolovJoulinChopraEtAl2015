@@ -17,7 +17,7 @@ import numpy as np
 class batch_generator(object):
     
     #
-    def __init__(self, tower, text, batch_size, num_unfoldings, vocabulary_size):
+    def __init__(self, display_info_flg, tower, text, batch_size, num_unfoldings, vocabulary_size):
         
         #
         self._batch_size = batch_size
@@ -43,9 +43,15 @@ class batch_generator(object):
         self._last_batch = self._next_batch()
         
         #
-        self._print_summary(tower, text)
-    
-    #
+        if display_info_flg:
+            print('     Tower: %d' % tower)
+            print('          Input Text Size: %d' % len(text))
+            print('          Cut Text Size: %d' % self._text_size)
+            print('          Subtext Size: %d' % self._sub_text_size)
+            print('          Dropped Text Size: %d' % self._dropped_text_size)
+            print('          Effective Batch Size: %d' % self._effective_batch_size)
+            print('          Number of Batches: %d' % self._num_batches)
+        
     def _next_batch(self):
         
         # Generate a batch starting with token at self._first_token_idx
@@ -54,18 +60,7 @@ class batch_generator(object):
             batch[i, self._text[self._offsets[i] + self._token_idx]] = 1.0
         self._token_idx += 1
         return batch
-    
-    #
-    def _print_summary(self, tower, text):
-        print('     Tower: %d' % tower)
-        print('          Input Text Size: %d' % len(text))
-        print('          Cut Text Size: %d' % self._text_size)
-        print('          Subtext Size: %d' % self._sub_text_size)
-        print('          Dropped Text Size: %d' % self._dropped_text_size)
-        print('          Effective Batch Size: %d' % self._effective_batch_size)
-        print('          Number of Batches: %d' % self._num_batches)
-        
-    #
+  
     def next(self):
 
         #
@@ -75,10 +70,8 @@ class batch_generator(object):
         self._last_batch = batches[-1]
         return batches
     
-    #
     def num_batches(self):
         return self._num_batches
     
-    #
     def reset_token_idx(self):
         self._token_idx = 0
